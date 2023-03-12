@@ -10,8 +10,15 @@
   },
   "dependencies": {
     "@next/font": "13.1.6",
+    "antd": "^5.3.0",
+    "crypto": "^1.0.1",
+    "crypto-js": "^4.1.1",
+    "http-proxy-middleware": "^2.0.6",
     "next": "13.1.6",
     "react": "18.2.0",
-    "react-dom": "18.2.0"
+    "react-dom": "18.2.0",
+    "recordrtc": "^5.6.2",
+    "sass": "^1.59.2",
+    "windicss-webpack-plugin": "^1.7.8"
   }
 }
