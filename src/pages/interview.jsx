@@ -125,10 +125,11 @@ export default function InterView({ data }) {
           mimeType: 'audio/webm',
           audioType: 'pcm',
           recorderType: RecordRTC.StereoAudioRecorder,
-          numberOfAudioChannels: 1,
           desiredSampRate: 16000,
           sampleRate: 16000,
-          timeSlice: 1000,
+          sampleBits: 16,
+          twoChannel: false,
+          timeSlice: 200,
           ondataavailable: (blob) => {
             console.log(blob)
             sendAudiaData(blob)
