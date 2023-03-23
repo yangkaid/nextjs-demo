@@ -15,7 +15,6 @@ const config = {
   highWaterMark: 1280
 }
 let recorder = null
-let socket = null
 // 鉴权签名
 async function getAuthStr(date) {
   const CryptoJS = (await import('crypto-js')).default;
@@ -25,30 +24,6 @@ async function getAuthStr(date) {
   let authorizationOrigin = `api_key="${config.apiKey}", algorithm="hmac-sha256", headers="host date request-line", signature="${signature}"`
   let authStr = CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(authorizationOrigin))
   return authStr
-}
-async function connectSocket() {
-  // 获取当前时间 RFC1123格式
-  let date = (new Date().toUTCString())
-  let auth = await getAuthStr(date)
-  let wssUrl = config.hostUrl + "?authorization=" + auth + "&date=" + date + "&host=" + config.host
-  socket = new WebSocket(wssUrl)
-  socket.onopen = () => {
-    console.log('连接成功')
-  }
-  socket.onmessage = (e) => {
-    console.log(JSON.parse(e.data))
-    let data = JSON.parse(e.data)
-    if (data.code === 0) {
-      getResult(data.data.result)
-    }
-  }
-  socket.onclose = (e) => {
-    console.log('连接关闭', e)
-  }
-  socket.onerror = (err) => {
-    console.log('连接错误', err)
-  }
-
 }
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -67,7 +42,37 @@ function blobToBase64(blob) {
 export default function InterView() {
   const [isRecording, setIsRecording] = useState(false);
   const [responseText, setResponseText] = useState('');
+  let [socket, setSocket] = useState(null);
+  let tempRespomnseText = ''
+  let resultList = []
   let status = 0
+  async function connectSocket() {
+    // 获取当前时间 RFC1123格式
+    let date = (new Date().toUTCString())
+    let auth = await getAuthStr(date)
+    let wssUrl = config.hostUrl + "?authorization=" + auth + "&date=" + date + "&host=" + config.host
+    return new Promise((resolve, reject) => {
+      socket = new WebSocket(wssUrl)
+      socket.onopen = () => {
+        console.log('连接成功')
+        resolve()
+      }
+      socket.onmessage = (e) => {
+        console.log(JSON.parse(e.data))
+        let data = JSON.parse(e.data)
+        if (data.code === 0) {
+          getResult(data.data.result)
+        }
+      }
+      socket.onclose = (e) => {
+        console.log('连接关闭', e)
+      }
+      socket.onerror = (err) => {
+        console.log('连接错误', err)
+      }
+    })
+
+  }
   // 上传音频接口
   const sendAudiaData = (audioData, status) => {
     let params = {}
@@ -91,7 +96,7 @@ export default function InterView() {
           domain: "iat",
           accent: "mandarin",
           vad_eos: 10000,
-          dwa: "wpgs"
+          // dwa: "wpgs"
         },
         data: {
           status: 0,
@@ -111,7 +116,11 @@ export default function InterView() {
         }
       }
     }
-    socket.send(JSON.stringify(params))
+    if (socket.readyState === 1) {
+      socket.send(JSON.stringify(params))
+    } else {
+      console.log('连接已断开')
+    }
   }
   // 开始录音
   const startRecording = async () => {
@@ -126,7 +135,7 @@ export default function InterView() {
         desiredSampRate: 16000,
         recorderType: RecordRTC.StereoAudioRecorder,
         numberOfAudioChannels: 1,
-        timeSlice: 1000,
+        timeSlice: 200,
         ondataavailable: (blob) => {
           blobToBase64(blob).then((base64) => {
             if (status === 0) {
@@ -146,25 +155,42 @@ export default function InterView() {
   // 停止录音
   const stopRecording = () => {
     console.log('停止录音')
+    let finalBlob = ''
     recorder.stopRecording(() => {
-      let blob = recorder.getBlob()
+      finalBlob = recorder.getBlob()
       // 获取录音链接
-      let url = URL.createObjectURL(blob)
-      window.open(url)
-
-      blobToBase64(blob).then((base64) => {
-        sendAudiaData(base64, 2)
-      })
+      // let url = URL.createObjectURL(blob)
+      // window.open(url)
     });
+    blobToBase64(finalBlob).then((base64) => {
+      sendAudiaData(base64, 2)
+    })
     setIsRecording(false)
   }
   // 拼接结果
   const getResult = (result) => {
-    let responseText = ''
-    result.forEach((item) => {
-      responseText += item.text
-    })
-    setResponseText(responseText)
+    resultList.push(result)
+    let str = ''
+    let ws = result.ws
+    for (let i = 0; i < ws.length; i++) {
+      str = str + ws[i].cw[0].w
+    }
+    // 取值为 "apd"时表示该片结果是追加到前面的最终结果；取值为"rpl" 时表示替换前面的部分结果，替换范围为rg字段
+    tempRespomnseText += str
+    console.log(tempRespomnseText)
+    // if (result.pgs === 'apd') {
+    // } else {
+    //   let rg = result.rg
+    //   // rg字段表示替换的范围，替换resultList是第rg[0]项到第rg[1]项返回的结果
+    //   let start = rg[0]
+    //   let end = rg[1]
+    //   let arr = resultList.slice(start, end)
+    //   let replaceStr = arr.map(item => item.ws[0].cw[0].w).join('')
+    //   console.log(replaceStr)
+    //   tempRespomnseText = tempRespomnseText.replace(replaceStr, str)
+    //   console.log(tempRespomnseText)
+    // }
+    setResponseText(tempRespomnseText)
   }
   // 获取聊天记录
   const getChatInfo = async () => {
